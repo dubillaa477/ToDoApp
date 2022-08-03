@@ -1,0 +1,106 @@
+//Require is the way to import modules
+const { text } = require("express")
+let express = require("express")
+let sanitizehtml = require('sanitize-html')
+
+//This way you can import specific 'parts' of the module
+//inlcude the name of the part you need between the {} 
+let { MongoClient, ObjectId } = require('mongodb')
+
+let app = express()
+let db
+
+let port = process.env.PORT
+if (port == null || port == "") {
+    port = 3000
+}
+
+app.use(express.static('pub'))
+
+//Create connection to the database
+async function dbSetUp() {
+    let client = new MongoClient('mongodb+srv://webapp:itadmin01@clustertodoapp.y8kwxd9.mongodb.net/NodeJSTraining?retryWrites=true&w=majority')
+    await client.connect()
+    db = client.db()
+    app.listen(port)
+}
+
+dbSetUp()
+
+//This part is to enable users input under req.body object
+app.use(express.urlencoded({ extended: false }))
+app.use(express.json())
+
+function passwordProtected(req, res, next) {
+    res.set('WWW-Authenticate', 'Basic realm="Simple todo app"')
+    console.log(req.headers.authorization)
+    if (req.headers.authorization == "Basic ZHViaWxsYTpkdWJpbGxh") {
+        next()
+    } else {
+        res.status(401).send('Authentication required')
+    }
+}
+
+app.use(passwordProtected)
+
+app.get('/', (req, res) => {
+    db.collection('items').find().toArray((err, items) => {
+        res.send(`<!DOCTYPE html>
+    <html>
+    
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Simple To-Do App</title>
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
+    </head>
+    
+    <body>
+        <div class="container">
+            <h1 class="display-4 text-center py-1">To-Do App!</h1>
+    
+            <div class="jumbotron p-3 shadow-sm">
+                <form id="create-form" action="/create-item" method="POST">
+                    <div class="d-flex align-items-center">
+                        <input id="create-field" name="item" autofocus autocomplete="off" class="form-control mr-3" type="text" style="flex: 1;">
+                        <button class="btn btn-primary">Add New Item</button>
+                    </div>
+                </form>
+            </div>
+    
+            <ul id="item-list" class="list-group pb-5">
+                
+            </ul>
+    
+        </div>
+
+    <script>
+        let items = ${JSON.stringify(items)}
+    </script>    
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="/browser.js"></script>
+    
+    </body>
+    </html>`)
+    })
+})
+
+app.post("/create-item", (req, res) => {
+    let saveText = sanitizehtml(req.body.text, { allowedTags: [], allowedAttributes: {} })
+    db.collection('items').insertOne({ text: saveText }, (err, info) => {
+        res.json({ _id: info.insertedId, text: req.body.text })
+    })
+})
+
+app.post('/update-item', (req, res) => {
+    let saveText = sanitizehtml(req.body.text, { allowedTags: [], allowedAttributes: {} })
+    db.collection('items').findOneAndUpdate({ _id: new ObjectId(req.body.id) }, { $set: { text: saveText } }, () => {
+        res.send("Success!")
+    })
+})
+
+app.post('/delete-item', (req, res) => {
+    db.collection('items').deleteOne({ _id: new ObjectId(req.body.id) }, () => {
+        res.send('Success!')
+    })
+})
